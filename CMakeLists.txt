@@ -22,7 +22,7 @@ project(CUBRID-JDBC)
 
 message(STATUS "=========== JDBC ===========")
 
-# check enviroment
+# check environment
 include(FindJava)
 find_package(Java 1.8 COMPONENTS Development)
 
@@ -38,26 +38,54 @@ else (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt)
   # version may exist at the parent path
   set (CUBRID_JDBC_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../)
 endif (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt)
-set (CUBRID_JDBC_OUTPUT_DIR ${CUBRID_JDBC_SOURCE_DIR}/output)
 
-message(STATUS "[INFO] CUBRID_JDBC_SOURCE_DIR = ${CUBRID_JDBC_SOURCE_DIR}")
+set (CUBRID_JDBC_OUTPUT_DIR ${CUBRID_JDBC_SOURCE_DIR})
+set (VERSION_FILE ${CUBRID_JDBC_OUTPUT_DIR}/VERSION-DIST)
+set (JDBC_JAR ${CUBRID_JDBC_OUTPUT_DIR}/cubrid_jdbc.jar)
+
+message(STATUS "[] CUBRID_JDBC_SOURCE_DIR = ${CUBRID_JDBC_SOURCE_DIR}")
 message(STATUS "[INFO] CUBRID_JDBC_OUTPUT_DIR = ${CUBRID_JDBC_OUTPUT_DIR}")
 
-add_custom_target(jdbc_build)
-
-add_custom_command(TARGET jdbc_build PRE_BUILD
+# Generate version file
+add_custom_command(
+  OUTPUT ${VERSION_FILE}
   COMMAND ${CMAKE_COMMAND} -E make_directory ${CUBRID_JDBC_OUTPUT_DIR}
-  COMMAND ${CMAKE_COMMAND} -DCUBRID_JDBC_SOURCE_DIR=${CUBRID_JDBC_SOURCE_DIR} -DCUBRID_JDBC_OUTPUT_DIR=${CUBRID_JDBC_OUTPUT_DIR} -P ${CUBRID_JDBC_SOURCE_DIR}/cmake/gen_version.cmake
-  COMMENT "Cleaning CUBRID JDBC project and Generating JDBC VERSION-DIST file ..."
+  COMMAND ${CMAKE_COMMAND} 
+          -DCUBRID_JDBC_SOURCE_DIR=${CUBRID_JDBC_SOURCE_DIR}
+          -DCUBRID_JDBC_OUTPUT_DIR=${CUBRID_JDBC_OUTPUT_DIR}
+          -P ${CUBRID_JDBC_SOURCE_DIR}/cmake/gen_version.cmake
+  DEPENDS ${CUBRID_JDBC_SOURCE_DIR}/build.xml
+  COMMENT "Generating JDBC VERSION-DIST file..."
 )
 
-# build with ant
-add_custom_command(TARGET jdbc_build
+# Build JDBC driver
+add_custom_command(
+  OUTPUT ${JDBC_JAR}
   COMMAND ${ANT} dist-cubrid -buildfile ${CMAKE_CURRENT_SOURCE_DIR}/build.xml
-  COMMENT "Build JDBC driver with Ant ..."
+  DEPENDS ${VERSION_FILE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/build.xml
+          ${CMAKE_CURRENT_SOURCE_DIR}/src
+  COMMENT "Building JDBC driver with Ant..."
 )
 
-# generate cubrid_jdbc.jar
-add_custom_command(TARGET jdbc_build POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -DCUBRID_JDBC_SOURCE_DIR=${CUBRID_JDBC_SOURCE_DIR} -DCUBRID_JDBC_OUTPUT_DIR=${CUBRID_JDBC_OUTPUT_DIR} -P ${CUBRID_JDBC_SOURCE_DIR}/cmake/gen_symlink.cmake
+# Create symlink
+add_custom_command(
+  OUTPUT ${CUBRID_JDBC_OUTPUT_DIR}/cubrid_jdbc_symlink
+  COMMAND ${CMAKE_COMMAND}
+          -DCUBRID_JDBC_SOURCE_DIR=${CUBRID_JDBC_SOURCE_DIR}
+          -DCUBRID_JDBC_OUTPUT_DIR=${CUBRID_JDBC_OUTPUT_DIR}
+          -P ${CUBRID_JDBC_SOURCE_DIR}/cmake/gen_symlink.cmake
+  COMMAND ${CMAKE_COMMAND} -E touch ${CUBRID_JDBC_OUTPUT_DIR}/cubrid_jdbc_symlink
+  DEPENDS ${JDBC_JAR}
+  COMMENT "Generating JDBC symlink..."
 )
+
+# Main target that depends on all outputs
+add_custom_target(jdbc_build ALL
+  DEPENDS ${VERSION_FILE}
+          ${JDBC_JAR}
+          ${CUBRID_JDBC_OUTPUT_DIR}/cubrid_jdbc_symlink
+)
+
+# Install rules if needed
+install(FILES ${JDBC_JAR} DESTINATION jdbc)
